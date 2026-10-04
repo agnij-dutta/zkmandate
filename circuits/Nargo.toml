@@ -2,6 +2,9 @@
 name = "zkmandate"
 type = "bin"
 authors = ["Agnij Dutta"]
+description = "Prove a payment fits a private spending mandate (per-tx cap, cumulative cap, payee allowlist, expiry)"
+license = "MIT"
+keywords = ["zero-knowledge", "spending-mandate", "ai-agents"]
 
 [dependencies]
 poseidon = { tag = "v0.2.6", git = "https://github.com/noir-lang/poseidon" }

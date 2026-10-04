@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NARGO_VERSION: 1.0.0-beta.19
+  BB_VERSION: 4.0.0-nightly.20260120
+  FOUNDRY_VERSION: v1.5.1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install nargo
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
+          "$HOME/.nargo/bin/noirup" -v "$NARGO_VERSION"
+          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install bb
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          "$HOME/.bb/bbup" -v "$BB_VERSION"
+          echo "$HOME/.bb" >> "$GITHUB_PATH"
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install SDK dependencies
+        working-directory: sdk
+        run: npm ci
+
+      - name: Lint and format
+        run: |
+          (cd circuits && nargo fmt --check)
+          (cd contracts && forge fmt --check)
+          (cd sdk && npm run lint)
+
+      # Rebuild the verifier and SDK artifact from the circuit and fail if the
+      # committed copies are stale.
+      - name: Build and check generated files
+        run: |
+          ./scripts/build.sh
+          git diff --exit-code -- contracts/src/HonkVerifier.sol sdk/circuit/zkmandate.json
+
+      - name: Test (nargo, forge, SDK)
+        run: ./scripts/test-all.sh
+
+      - name: Build SDK
+        working-directory: sdk
+        run: npm run build
