@@ -20,7 +20,7 @@ contract PrivateMandateRegistryTest is Test {
     HonkVerifier verifier;
     PrivateMandateRegistry reg;
 
-    address principal = makeAddr("principal");
+    address principal;
     address agent;
     address mallory = makeAddr("mallory");
     bytes32 mandate;
@@ -31,6 +31,7 @@ contract PrivateMandateRegistryTest is Test {
     function setUp() public {
         string memory json = vm.readFile("test/fixtures/payments.json");
         address regAddr = vm.parseJsonAddress(json, ".registry");
+        principal = vm.parseJsonAddress(json, ".principal");
         agent = vm.parseJsonAddress(json, ".agent");
         mandate = vm.parseJsonBytes32(json, ".mandate");
         initialHead = vm.parseJsonBytes32(json, ".initialHead");
@@ -47,8 +48,8 @@ contract PrivateMandateRegistryTest is Test {
 
         usdc = new MockUSDC();
         verifier = new HonkVerifier();
-        // Proofs are bound to (chainid, registry address, mandate), so the
-        // registry must live at the address the fixtures were generated for.
+        // Proofs are bound to (chainid, registry address, principal, mandate), so
+        // the registry must live at the address the fixtures were generated for.
         deployCodeTo("PrivateMandateRegistry.sol:PrivateMandateRegistry", abi.encode(verifier, usdc), regAddr);
         reg = PrivateMandateRegistry(regAddr);
 
@@ -63,11 +64,22 @@ contract PrivateMandateRegistryTest is Test {
     function _pay(uint256 i) internal {
         Pay storage p = pays[i];
         vm.prank(agent);
-        reg.pay(mandate, p.payee, p.amount, validUntil, p.newHead, p.proof);
+        reg.pay(principal, mandate, p.payee, p.amount, validUntil, p.newHead, p.proof);
     }
 
     function _head() internal view returns (bytes32 h) {
-        (,,, h) = reg.mandates(mandate);
+        (,, h) = reg.mandates(reg.mandateId(principal, mandate));
+    }
+
+    function _pubInputs(Pay memory p) internal view returns (bytes32[] memory pub) {
+        pub = new bytes32[](7);
+        pub[0] = mandate;
+        pub[1] = initialHead;
+        pub[2] = p.newHead;
+        pub[3] = bytes32(uint256(p.amount));
+        pub[4] = bytes32(uint256(uint160(p.payee)));
+        pub[5] = bytes32(uint256(validUntil));
+        pub[6] = reg.contextOf(principal, mandate);
     }
 
     // ------------------------------------------------------------ happy --
@@ -92,7 +104,7 @@ contract PrivateMandateRegistryTest is Test {
 
     function test_EmitsPaidWithoutRevealingTerms() public {
         vm.expectEmit(true, true, false, true, address(reg));
-        emit PrivateMandateRegistry.Paid(mandate, pays[0].payee, 4e6, pays[0].newHead);
+        emit PrivateMandateRegistry.Paid(reg.mandateId(principal, mandate), pays[0].payee, 4e6, pays[0].newHead);
         _pay(0);
     }
 
@@ -102,7 +114,7 @@ contract PrivateMandateRegistryTest is Test {
     function test_RevertWhen_OverPerTxCap() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, 6e6, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, 6e6, validUntil, pays[0].newHead, pays[0].proof);
     }
 
     /// After 4 + 4 USDC, inflating the 3rd payment to 5 USDC would total 13 > 12.
@@ -112,35 +124,35 @@ contract PrivateMandateRegistryTest is Test {
         _pay(1);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[2].payee, 5e6, validUntil, pays[2].newHead, pays[2].proof);
+        reg.pay(principal, mandate, pays[2].payee, 5e6, validUntil, pays[2].newHead, pays[2].proof);
     }
 
     /// A front-runner or compromised relayer cannot redirect a proven payment.
     function test_RevertWhen_WrongPayee() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, mallory, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, mallory, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
     }
 
     function test_RevertWhen_Expired() public {
         vm.warp(uint256(validUntil) + 1);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.Expired.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
     }
 
     /// Lying about the deadline (extending validUntil) invalidates the proof.
     function test_RevertWhen_ValidUntilExtended() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil + 1, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil + 1, pays[0].newHead, pays[0].proof);
     }
 
     function test_RevertWhen_ReplayedProof() public {
         _pay(0);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
         assertEq(usdc.balanceOf(pays[0].payee), 4e6);
     }
 
@@ -149,14 +161,25 @@ contract PrivateMandateRegistryTest is Test {
     function test_RevertWhen_OutOfOrder() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[1].payee, pays[1].amount, validUntil, pays[1].newHead, pays[1].proof);
+        reg.pay(principal, mandate, pays[1].payee, pays[1].amount, validUntil, pays[1].newHead, pays[1].proof);
     }
 
     /// Recording a smaller spend than paid (forged next head) fails.
     function test_RevertWhen_TamperedNewHead() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, initialHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, initialHead, pays[0].proof);
+    }
+
+    /// newHead + P reduces to the same field element inside the verifier; the
+    /// registry must refuse it rather than store an aliased head.
+    function test_RevertWhen_NonCanonicalNewHead() public {
+        bytes32 aliased = bytes32(
+            uint256(pays[0].newHead) + 21888242871839275222246405745257275088548364400416034343698204186575808495617
+        );
+        vm.prank(agent);
+        vm.expectRevert(PrivateMandateRegistry.NonCanonical.selector);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, aliased, pays[0].proof);
     }
 
     function test_RevertWhen_GarbageProof() public {
@@ -164,18 +187,31 @@ contract PrivateMandateRegistryTest is Test {
         junk[100] = bytes1(uint8(junk[100]) ^ 0x01);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, junk);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, junk);
     }
 
     function test_RevertWhen_TruncatedProof() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, hex"00");
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, hex"00");
     }
 
-    /// Same mandate registered on another registry: proofs do not cross over.
+    /// The verifier accepts the registry's public input order and rejects any
+    /// permutation of it (here: amount and validUntil swapped).
+    function test_PublicInputOrderMatchesCircuit() public view {
+        Pay memory p = pays[0];
+        bytes32[] memory pub = _pubInputs(p);
+        assertTrue(verifier.verify(p.proof, pub));
+        (pub[3], pub[5]) = (pub[5], pub[3]);
+        try verifier.verify(p.proof, pub) returns (bool ok) {
+            assertFalse(ok);
+        } catch {}
+    }
+
+    /// Same principal, same mandate on another registry: proofs do not cross over.
     function test_RevertWhen_ProofReplayedOnOtherRegistry() public {
-        PrivateMandateRegistry other = new PrivateMandateRegistry(IVerifier(address(verifier)), IERC20Min(address(usdc)));
+        PrivateMandateRegistry other =
+            new PrivateMandateRegistry(IVerifier(address(verifier)), IERC20Min(address(usdc)));
         vm.startPrank(principal);
         usdc.approve(address(other), type(uint256).max);
         other.deposit(10e6);
@@ -183,13 +219,46 @@ contract PrivateMandateRegistryTest is Test {
         vm.stopPrank();
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
-        other.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        other.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+    }
+
+    /// Mallory copies the commitment and head into her own registration (and
+    /// even names the real agent). The proof is bound to the real principal, so
+    /// it cannot draw on Mallory's escrow, and the real mandate is unaffected.
+    function test_CopiedCommitmentIsIndependent() public {
+        usdc.mint(mallory, 10e6);
+        vm.startPrank(mallory);
+        usdc.approve(address(reg), type(uint256).max);
+        reg.deposit(10e6);
+        reg.createMandate(mandate, initialHead, agent);
+        vm.stopPrank();
+        assertTrue(reg.mandateId(mallory, mandate) != reg.mandateId(principal, mandate));
+
+        vm.prank(agent);
+        vm.expectRevert(PrivateMandateRegistry.InvalidProof.selector);
+        reg.pay(mallory, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+
+        _pay(0);
+        assertEq(reg.escrowOf(mallory), 10e6);
+        assertEq(reg.escrowOf(principal), 46e6);
+    }
+
+    /// Front-running createMandate with the same commitment used to block the
+    /// principal forever. With per-principal ids it no longer can.
+    function test_FrontRunCreateCannotSquat() public {
+        bytes32 fresh = bytes32(uint256(0x1234));
+        vm.prank(mallory);
+        reg.createMandate(fresh, initialHead, mallory);
+        vm.prank(principal);
+        reg.createMandate(fresh, initialHead, agent);
+        (address a,,) = reg.mandates(reg.mandateId(principal, fresh));
+        assertEq(a, agent);
     }
 
     function test_RevertWhen_NotAgent() public {
         vm.prank(mallory);
         vm.expectRevert(PrivateMandateRegistry.NotAgent.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
     }
 
     function test_RevertWhen_Revoked() public {
@@ -197,13 +266,27 @@ contract PrivateMandateRegistryTest is Test {
         reg.revoke(mandate);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.Revoked.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
     }
 
+    /// A revoked commitment cannot come back with a fresh (spent = 0) head.
+    function test_RevertWhen_RecreateAfterRevoke() public {
+        vm.startPrank(principal);
+        reg.revoke(mandate);
+        vm.expectRevert(PrivateMandateRegistry.MandateExists.selector);
+        reg.createMandate(mandate, initialHead, agent);
+        vm.stopPrank();
+    }
+
+    /// A stranger's revoke resolves to the stranger's own (empty) slot.
     function test_RevertWhen_RevokeByStranger() public {
         vm.prank(mallory);
-        vm.expectRevert(PrivateMandateRegistry.NotPrincipal.selector);
+        vm.expectRevert(PrivateMandateRegistry.MandateMissing.selector);
         reg.revoke(mandate);
+        vm.prank(agent);
+        vm.expectRevert(PrivateMandateRegistry.MandateMissing.selector);
+        reg.revoke(mandate);
+        _pay(0);
     }
 
     function test_RevertWhen_EscrowDrained() public {
@@ -211,17 +294,19 @@ contract PrivateMandateRegistryTest is Test {
         reg.withdraw(50e6);
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.InsufficientEscrow.selector);
-        reg.pay(mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
     }
 
     function test_RevertWhen_UnknownMandate() public {
         vm.prank(agent);
         vm.expectRevert(PrivateMandateRegistry.MandateMissing.selector);
-        reg.pay(bytes32(uint256(1)), pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        reg.pay(
+            principal, bytes32(uint256(1)), pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof
+        );
     }
 
     function test_RevertWhen_DuplicateMandate() public {
-        vm.prank(mallory);
+        vm.prank(principal);
         vm.expectRevert(PrivateMandateRegistry.MandateExists.selector);
         reg.createMandate(mandate, initialHead, mallory);
     }
@@ -229,6 +314,11 @@ contract PrivateMandateRegistryTest is Test {
     function test_RevertWhen_NonCanonicalCommitment() public {
         vm.expectRevert(PrivateMandateRegistry.NonCanonical.selector);
         reg.createMandate(bytes32(type(uint256).max), initialHead, agent);
+    }
+
+    function test_RevertWhen_ZeroAgent() public {
+        vm.expectRevert(PrivateMandateRegistry.ZeroAgent.selector);
+        reg.createMandate(bytes32(uint256(7)), initialHead, address(0));
     }
 
     function test_WithdrawAndOverWithdraw() public {
@@ -240,19 +330,32 @@ contract PrivateMandateRegistryTest is Test {
         vm.stopPrank();
     }
 
+    /// One principal's agent can never spend another principal's escrow.
+    function test_EscrowIsPerPrincipal() public {
+        vm.prank(principal);
+        reg.withdraw(50e6);
+        usdc.mint(mallory, 10e6);
+        vm.startPrank(mallory);
+        usdc.approve(address(reg), type(uint256).max);
+        reg.deposit(10e6);
+        vm.stopPrank();
+        vm.prank(agent);
+        vm.expectRevert(PrivateMandateRegistry.InsufficientEscrow.selector);
+        reg.pay(principal, mandate, pays[0].payee, pays[0].amount, validUntil, pays[0].newHead, pays[0].proof);
+        assertEq(usdc.balanceOf(address(reg)), 10e6);
+    }
+
+    function test_RevertWhen_ConstructedWithoutCode() public {
+        vm.expectRevert(PrivateMandateRegistry.NotAContract.selector);
+        new PrivateMandateRegistry(IVerifier(address(verifier)), IERC20Min(address(0xdead)));
+    }
+
     // ---------------------------------------------------------------- gas --
 
     /// Execution gas only (no calldata / intrinsic cost). See BENCHMARKS.md for full tx gas on anvil.
     function test_Gas_VerifyAndPay() public {
         Pay memory p = pays[0]; // copy out of storage so SLOADs are not measured
-        bytes32[] memory pub = new bytes32[](7);
-        pub[0] = mandate;
-        pub[1] = initialHead;
-        pub[2] = p.newHead;
-        pub[3] = bytes32(uint256(p.amount));
-        pub[4] = bytes32(uint256(uint160(p.payee)));
-        pub[5] = bytes32(uint256(validUntil));
-        pub[6] = reg.contextOf(mandate);
+        bytes32[] memory pub = _pubInputs(p);
         uint256 g = gasleft();
         bool ok = verifier.verify(p.proof, pub);
         console2.log("verifier.verify execution gas", g - gasleft());
@@ -260,7 +363,7 @@ contract PrivateMandateRegistryTest is Test {
 
         vm.prank(agent);
         g = gasleft();
-        reg.pay(mandate, p.payee, p.amount, validUntil, p.newHead, p.proof);
+        reg.pay(principal, mandate, p.payee, p.amount, validUntil, p.newHead, p.proof);
         console2.log("registry.pay execution gas (verify + state + transfer)", g - gasleft());
     }
 }

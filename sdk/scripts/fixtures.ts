@@ -1,11 +1,19 @@
 // Generates contracts/test/fixtures/payments.json: real proofs the Foundry
 // tests replay against the generated HonkVerifier. Re-run after any circuit change.
 import { writeFileSync, mkdirSync } from "node:fs";
-import { createMandate, initialState, contextFor, ZkMandateProver, MandateViolation, toHex32 } from "../src/index.js";
+import {
+  createMandate,
+  initialState,
+  ZkMandateProver,
+  MandateViolation,
+  toHex32,
+  type MandateDomain,
+} from "../src/index.js";
 
 export const FIXTURE = {
   chainId: 31337n,
   registry: "0x00000000000000000000000000000000c0dec0de" as const,
+  principal: "0x0000000000000000000000000000000000001ead" as const,
   agent: "0x000000000000000000000000000000000000a6e7",
   payees: [
     "0x1111111111111111111111111111111111111111",
@@ -16,7 +24,8 @@ export const FIXTURE = {
   totalCap: 12_000_000n,
   notAfter: 1_900_000_000n,
   validUntil: 1_800_000_000n,
-  salt: 0x1f2e3d4c5b6a79881726354453627180n,
+  // Fixed so the fixtures are reproducible; any real mandate uses a random salt.
+  salt: 0x1f2e3d4c5b6a798817263544536271809a8b7c6d5e4f30211203f4e5d6c7b8n,
 };
 
 const prover = await ZkMandateProver.create();
@@ -27,7 +36,7 @@ const m = await createMandate({
   payees: FIXTURE.payees,
   salt: FIXTURE.salt,
 });
-const context = contextFor(FIXTURE.chainId, FIXTURE.registry, m.commitment);
+const domain: MandateDomain = { chainId: FIXTURE.chainId, registry: FIXTURE.registry, principal: FIXTURE.principal };
 let state = initialState(m);
 const initialHead = state.head;
 
@@ -38,7 +47,7 @@ const plan: [bigint, number][] = [
 ];
 const payments = [];
 for (const [amount, who] of plan) {
-  const p = await prover.prove(m, state, { amount, payee: FIXTURE.payees[who], validUntil: FIXTURE.validUntil, context });
+  const p = await prover.prove(m, state, { amount, payee: FIXTURE.payees[who], validUntil: FIXTURE.validUntil, domain });
   if (!(await prover.verify(p))) throw new Error("fixture proof failed to verify");
   payments.push({
     payee: FIXTURE.payees[who],
@@ -51,7 +60,7 @@ for (const [amount, who] of plan) {
 
 // The 4th payment (2 USDC: under the per-tx cap, over the remaining 1 USDC) has no proof.
 try {
-  await prover.prove(m, state, { amount: 2_000_000n, payee: FIXTURE.payees[0], validUntil: FIXTURE.validUntil, context });
+  await prover.prove(m, state, { amount: 2_000_000n, payee: FIXTURE.payees[0], validUntil: FIXTURE.validUntil, domain });
   throw new Error("4th payment unexpectedly proved");
 } catch (e) {
   if (!(e instanceof MandateViolation) || e.reason !== "OVER_CUMULATIVE") throw e;
@@ -59,6 +68,7 @@ try {
 
 const out = {
   registry: FIXTURE.registry,
+  principal: FIXTURE.principal,
   agent: FIXTURE.agent,
   mandate: toHex32(m.commitment),
   initialHead: toHex32(initialHead),

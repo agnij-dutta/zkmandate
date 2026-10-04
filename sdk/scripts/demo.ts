@@ -3,7 +3,16 @@
 //
 //   cd contracts && forge build && cd ../sdk && npm run demo   (BACKEND=native npm run demo for native bb)
 import { formatUnits, type Address, type Hex } from "viem";
-import { createMandate, initialState, contextFor, ZkMandateProver, MandateViolation, toHex32, BackendType } from "../src/index.js";
+import {
+  createMandate,
+  initialState,
+  ZkMandateProver,
+  MandateViolation,
+  toHex32,
+  BackendType,
+  payArgs,
+  type MandateDomain,
+} from "../src/index.js";
 import { startAnvil, deployStack } from "./chain.js";
 
 const c = {
@@ -54,7 +63,8 @@ try {
   console.log(c.dim("on-chain   (public): "), `mandate ${short(commitment)}  head ${short(toHex32(state.head))}  escrow ${usd(50_000_000n)}`);
   console.log(c.dim("                      caps, expiry and vendor list: not on-chain\n"));
 
-  const context = contextFor(BigInt(await s.pub.getChainId()), reg.address, mandate.commitment);
+  const principal = s.principal.account!.address;
+  const domain: MandateDomain = { chainId: BigInt(await s.pub.getChainId()), registry: reg.address, principal };
   // BACKEND=native uses bb.js with the native bb binary (about 2x faster than WASM).
   const prover = await ZkMandateProver.create({
     backend: process.env.BACKEND === "native" ? BackendType.NativeUnixSocket : BackendType.Wasm,
@@ -72,9 +82,8 @@ try {
     const payee = VENDORS[vendor];
     process.stdout.write(`${c.bold(`payment ${i + 1}`)}  ${usd(amount).padEnd(6)} -> ${vendor.padEnd(12)} `);
     try {
-      const p = await prover.prove(mandate, state, { amount, payee, validUntil, context });
-      const a = p.args;
-      const r = await send(s.agent, "pay", [a.mandate, a.payee, a.amount, a.validUntil, a.newHead, a.proof]);
+      const p = await prover.prove(mandate, state, { amount, payee, validUntil, domain });
+      const r = await send(s.agent, "pay", payArgs(p));
       state = p.newState;
       const bal = (await s.pub.readContract({ ...usdc, functionName: "balanceOf", args: [payee] })) as bigint;
       console.log(
@@ -89,8 +98,9 @@ try {
   }
 
   // What can an observer actually learn?
-  const [, , , head] = (await s.pub.readContract({ ...reg, functionName: "mandates", args: [commitment] })) as [Address, Address, boolean, Hex];
-  const escrow = (await s.pub.readContract({ ...reg, functionName: "escrowOf", args: [s.principal.account!.address] })) as bigint;
+  const id = (await s.pub.readContract({ ...reg, functionName: "mandateId", args: [principal, commitment] })) as Hex;
+  const [, , head] = (await s.pub.readContract({ ...reg, functionName: "mandates", args: [id] })) as [Address, boolean, Hex];
+  const escrow = (await s.pub.readContract({ ...reg, functionName: "escrowOf", args: [principal] })) as bigint;
   console.log(c.bold("\nwhat the chain knows"));
   console.log(`  mandate ${short(commitment)}, head ${short(head)}, principal escrow ${usd(escrow)}`);
   console.log(`  3 payments: ${["weather-api", "gpu-rental", "search-api"].join(", ")} (payee + amount are public token transfers)`);
@@ -100,7 +110,7 @@ try {
 
   // Also try a vendor the principal never approved.
   try {
-    await prover.prove(mandate, state, { amount: 1n, payee: "0x000000000000000000000000000000000000bad0", validUntil, context });
+    await prover.prove(mandate, state, { amount: 1n, payee: "0x000000000000000000000000000000000000bad0", validUntil, domain });
   } catch (e) {
     if (e instanceof MandateViolation) console.log(c.dim(`bonus: unknown vendor -> NO PROOF (${e.reason})\n`));
     else throw e;

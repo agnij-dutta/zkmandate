@@ -2,9 +2,10 @@
 //
 //   const m = await createMandate({ maxPerTx, totalCap, notAfter, payees });
 //   let state = initialState(m);
-//   const p = await proveMandatePayment(m, state, { amount, payee, validUntil, context });
-//   await registry.pay(...p.args);       // on-chain
-//   state = p.newState;                  // advance the private state
+//   const domain = { chainId, registry, principal };
+//   const p = await proveMandatePayment(m, state, { amount, payee, validUntil, domain });
+//   await registry.write.pay(payArgs(p));  // on-chain
+//   state = p.newState;                    // advance the private state
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -33,7 +34,12 @@ export interface MandateTerms {
   totalCap: bigint;
   notAfter: bigint; // unix seconds; use U64_MAX for "no expiry"
   payees: string[]; // EVM addresses
-  salt?: bigint; // hiding randomness; generated if omitted. MUST be high entropy.
+  /**
+   * Hiding randomness; generated with a CSPRNG if omitted. The commitment hides
+   * the terms only as well as this value is unguessable, so a caller-supplied
+   * salt below 2^128 is rejected.
+   */
+  salt?: bigint;
 }
 
 export interface Mandate extends Required<MandateTerms> {
@@ -49,13 +55,20 @@ export interface MandateState {
   head: bigint;
 }
 
+/** Where a mandate lives: the proof is bound to exactly this deployment and principal. */
+export interface MandateDomain {
+  chainId: bigint;
+  registry: `0x${string}`;
+  /** The address that called createMandate and funds the escrow. */
+  principal: `0x${string}`;
+}
+
 export interface Payment {
   amount: bigint;
   payee: string;
   /** Registry enforces block.timestamp <= validUntil; circuit enforces validUntil <= notAfter. */
   validUntil: bigint;
-  /** contextFor(chainId, registry, commitment): binds the proof to one deployment. */
-  context: bigint;
+  domain: MandateDomain;
 }
 
 export interface PaymentProof {
@@ -64,8 +77,9 @@ export interface PaymentProof {
   /** The 7 public inputs, in circuit order, as bytes32 hex. */
   publicInputs: `0x${string}`[];
   newState: MandateState;
-  /** Ready-made arguments for PrivateMandateRegistry.pay. */
+  /** Named arguments for PrivateMandateRegistry.pay (see payArgs for the ABI-ordered tuple). */
   args: {
+    principal: `0x${string}`;
     mandate: `0x${string}`;
     payee: `0x${string}`;
     amount: bigint;
@@ -105,6 +119,10 @@ const REASONS: [string, MandateViolation["reason"]][] = [
   ["new state", "BAD_STATE"],
 ];
 
+/** Minimum size of a caller-supplied salt. Random salts are 248 bits. */
+export const MIN_SALT = 1n << 128n;
+
+/** 248 uniformly random bits from the platform CSPRNG (always below the field modulus). */
 export function randomField(): bigint {
   const b = new Uint8Array(31); // 248 bits, always < field modulus
   crypto.getRandomValues(b);
@@ -122,6 +140,11 @@ export async function createMandate(terms: MandateTerms): Promise<Mandate> {
   checkU64("notAfter", terms.notAfter);
   const salt = terms.salt ?? randomField();
   if (salt >= FIELD_MODULUS) throw new RangeError("salt must be a field element");
+  if (salt < MIN_SALT) {
+    throw new RangeError(
+      "salt is too small to hide the terms (need >= 2^128); omit it to get 248 random bits",
+    );
+  }
   const allowlist = new Allowlist(terms.payees);
   const commitment = mandateHash(terms.maxPerTx, terms.totalCap, terms.notAfter, allowlist.root, salt);
   return { ...terms, salt, payees: allowlist.payees, allowlist, commitment };
@@ -133,18 +156,18 @@ export function initialState(m: Mandate): MandateState {
   return { spent: 0n, stateSalt, head: stateHash(m.commitment, 0n, stateSalt) };
 }
 
-/** Mirrors PrivateMandateRegistry.contextOf. */
-export function contextFor(chainId: bigint, registry: `0x${string}`, mandate: bigint): bigint {
+/** Mirrors PrivateMandateRegistry.contextOf(principal, commitment). */
+export function contextFor(domain: MandateDomain, mandate: bigint): bigint {
   const enc = encodeAbiParameters(
-    [{ type: "uint256" }, { type: "address" }, { type: "bytes32" }],
-    [chainId, registry, toHex32(mandate)],
+    [{ type: "uint256" }, { type: "address" }, { type: "address" }, { type: "bytes32" }],
+    [domain.chainId, domain.registry, domain.principal, toHex32(mandate)],
   );
   return BigInt(keccak256(enc)) >> 8n;
 }
 
 /** Successor state after `payment`, computed without proving (pure bookkeeping). */
 export function nextState(m: Mandate, s: MandateState, payment: Payment): MandateState {
-  const stateSalt = nextStateSalt(m.salt, s.head, payment.context);
+  const stateSalt = nextStateSalt(m.salt, s.head, contextFor(payment.domain, m.commitment));
   const spent = s.spent + payment.amount;
   return { spent, stateSalt, head: stateHash(m.commitment, spent, stateSalt) };
 }
@@ -186,6 +209,7 @@ export class ZkMandateProver {
     // A payee outside the allowlist gets a dummy path; the circuit then refuses.
     const path = index >= 0 ? m.allowlist.path(index) : new Array<bigint>(DEPTH).fill(0n);
     const next = nextState(m, s, payment);
+    const context = contextFor(payment.domain, m.commitment);
 
     const inputs = {
       mandate: toHex32(m.commitment),
@@ -194,7 +218,7 @@ export class ZkMandateProver {
       amount: payment.amount.toString(),
       payee: toHex32(addressToField(payment.payee)),
       valid_until: payment.validUntil.toString(),
-      context: toHex32(payment.context),
+      context: toHex32(context),
       max_per_tx: m.maxPerTx.toString(),
       total_cap: m.totalCap.toString(),
       not_after: m.notAfter.toString(),
@@ -236,6 +260,7 @@ export class ZkMandateProver {
       publicInputs: publicInputs.map((x) => toHex32(BigInt(x))),
       newState: next,
       args: {
+        principal: payment.domain.principal,
         mandate: toHex32(m.commitment),
         payee: payment.payee.toLowerCase() as `0x${string}`,
         amount: payment.amount,
@@ -258,6 +283,14 @@ export class ZkMandateProver {
   async destroy(): Promise<void> {
     await this.api.destroy();
   }
+}
+
+/** PrivateMandateRegistry.pay arguments in ABI order, for viem/ethers `pay(...)`. */
+export function payArgs(
+  p: PaymentProof,
+): [`0x${string}`, `0x${string}`, `0x${string}`, bigint, bigint, `0x${string}`, `0x${string}`] {
+  const a = p.args;
+  return [a.principal, a.mandate, a.payee, a.amount, a.validUntil, a.newHead, a.proof];
 }
 
 let defaultProver: Promise<ZkMandateProver> | undefined;

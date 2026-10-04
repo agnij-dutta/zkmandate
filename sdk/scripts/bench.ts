@@ -9,6 +9,8 @@ import {
   createMandate,
   initialState,
   contextFor,
+  nextState,
+  payArgs,
   ZkMandateProver,
   BackendType,
   toHex32,
@@ -16,6 +18,7 @@ import {
   type Mandate,
   type MandateState,
   type Payment,
+  type MandateDomain,
 } from "../src/index.js";
 import { startAnvil, deployStack } from "./chain.js";
 
@@ -62,12 +65,13 @@ try {
   const now = (await chain.pub.getBlock()).timestamp;
   const m = await createMandate({ maxPerTx: 5_000_000n, totalCap: 12_000_000n, notAfter: now + 86400n, payees: PAYEES });
   const s0 = initialState(m);
-  const context = contextFor(31337n, chain.registry.address, m.commitment);
-  const pay: Payment = { amount: 4_000_000n, payee: PAYEES[0], validUntil: now + 3600n, context };
+  const domain: MandateDomain = { chainId: 31337n, registry: chain.registry.address, principal: chain.principal.account!.address };
+  const context = contextFor(domain, m.commitment);
+  const pay: Payment = { amount: 4_000_000n, payee: PAYEES[0], validUntil: now + 3600n, domain };
 
   // Witness for the native CLI benchmark (same circuit, same statement shape).
   const idx = m.allowlist.indexOf(pay.payee);
-  const next = await (async () => (await import("../src/index.js")).nextState(m, s0, pay))();
+  const next = nextState(m, s0, pay);
   const q = (x: bigint) => `"${toHex32(x)}"`;
   writeFileSync(
     new URL("../../circuits/Prover.toml", import.meta.url),
@@ -129,8 +133,7 @@ try {
         data: encodeFunctionData({ abi: chain.verifier.abi, functionName: "verify", args: [p.proofHex, p.publicInputs] }),
       });
     }
-    const a = p.args;
-    const r = await send(chain.agent, reg, "pay", [a.mandate, a.payee, a.amount, a.validUntil, a.newHead, a.proof]);
+    const r = await send(chain.agent, reg, "pay", payArgs(p));
     payGas.push(r.gasUsed);
     s = p.newState;
   }

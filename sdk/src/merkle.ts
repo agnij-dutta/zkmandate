@@ -27,7 +27,6 @@ export class Allowlist {
       const next: bigint[] = [];
       for (let i = 0; i < level.length; i += 2) {
         const l = level[i], r = level[i + 1];
-        // Fast path: all-zero subtrees still hash (the circuit hashes them too).
         next.push(nodeHash(l, r));
       }
       this.levels.push(next);
