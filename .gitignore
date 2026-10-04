@@ -1,0 +1,7 @@
+node_modules/
+dist/
+contracts/out/
+contracts/cache/
+circuits/target/
+circuits/Prover.toml
+.DS_Store
