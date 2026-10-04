@@ -12,15 +12,7 @@ import { dirname, join } from "node:path";
 import { Noir, type CompiledCircuit } from "@noir-lang/noir_js";
 import { Barretenberg, UltraHonkBackend, BackendType } from "@aztec/bb.js";
 import { encodeAbiParameters, keccak256 } from "viem";
-import {
-  FIELD_MODULUS,
-  initHasher,
-  initialStateSalt,
-  mandateHash,
-  nextStateSalt,
-  stateHash,
-  toHex32,
-} from "./hash.js";
+import { FIELD_MODULUS, initHasher, initialStateSalt, mandateHash, nextStateSalt, stateHash, toHex32 } from "./hash.js";
 import { Allowlist, DEPTH, addressToField } from "./merkle.js";
 
 export * from "./hash.js";
@@ -94,13 +86,7 @@ export interface PaymentProof {
 export class MandateViolation extends Error {
   constructor(
     readonly reason:
-      | "OVER_PER_TX"
-      | "OVER_CUMULATIVE"
-      | "EXPIRED"
-      | "PAYEE_NOT_ALLOWED"
-      | "ZERO_AMOUNT"
-      | "BAD_STATE"
-      | "UNKNOWN",
+      "OVER_PER_TX" | "OVER_CUMULATIVE" | "EXPIRED" | "PAYEE_NOT_ALLOWED" | "ZERO_AMOUNT" | "BAD_STATE" | "UNKNOWN",
     message: string,
   ) {
     super(message);
@@ -141,9 +127,7 @@ export async function createMandate(terms: MandateTerms): Promise<Mandate> {
   const salt = terms.salt ?? randomField();
   if (salt >= FIELD_MODULUS) throw new RangeError("salt must be a field element");
   if (salt < MIN_SALT) {
-    throw new RangeError(
-      "salt is too small to hide the terms (need >= 2^128); omit it to get 248 random bits",
-    );
+    throw new RangeError("salt is too small to hide the terms (need >= 2^128); omit it to get 248 random bits");
   }
   const allowlist = new Allowlist(terms.payees);
   const commitment = mandateHash(terms.maxPerTx, terms.totalCap, terms.notAfter, allowlist.root, salt);
@@ -274,10 +258,7 @@ export class ZkMandateProver {
 
   /** Off-chain verification with the same keccak/ZK settings as the Solidity verifier. */
   async verify(p: PaymentProof): Promise<boolean> {
-    return this.backend.verifyProof(
-      { proof: p.proof, publicInputs: p.publicInputs },
-      { verifierTarget: "evm" },
-    );
+    return this.backend.verifyProof({ proof: p.proof, publicInputs: p.publicInputs }, { verifierTarget: "evm" });
   }
 
   async destroy(): Promise<void> {

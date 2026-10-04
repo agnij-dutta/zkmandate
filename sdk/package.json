@@ -2,17 +2,53 @@
   "name": "zkmandate",
   "version": "0.1.0",
   "description": "Private spending mandates for AI agents: prove a payment fits the mandate without revealing it.",
+  "keywords": [
+    "zero-knowledge",
+    "noir",
+    "ultrahonk",
+    "ai-agents",
+    "spending-mandate",
+    "payments",
+    "privacy",
+    "evm"
+  ],
+  "license": "MIT",
+  "author": "Agnij Dutta (https://x.com/0xholmesdev)",
+  "homepage": "https://github.com/agnij-dutta/zkmandate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agnij-dutta/zkmandate.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/agnij-dutta/zkmandate/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "circuit/zkmandate.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.check.json",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
     "test": "node --test --import tsx test/*.test.ts",
     "demo": "tsx scripts/demo.ts",
     "fixtures": "tsx scripts/fixtures.ts",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "tsx scripts/bench.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
@@ -20,8 +56,12 @@
     "viem": "^2.57.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.0",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.9",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.71.0"
   }
 }

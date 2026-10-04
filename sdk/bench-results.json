@@ -1,89 +1,89 @@
 {
-  "when": "2026-10-04T06:30:48.417Z",
+  "when": "2026-10-04T12:15:35.829Z",
   "runs": 10,
   "results": [
     {
       "label": "bb.js Wasm (in-process, no workers)",
-      "initMs": 3969,
+      "initMs": 676,
       "witness": {
-        "median": 8,
-        "min": 5,
-        "max": 51,
+        "median": 2,
+        "min": 2,
+        "max": 4,
         "runs": 10
       },
       "prove": {
-        "median": 1029,
-        "min": 818,
-        "max": 2118,
+        "median": 270,
+        "min": 213,
+        "max": 433,
         "runs": 10
       },
       "verify": {
-        "median": 226,
-        "min": 131,
-        "max": 452,
+        "median": 55,
+        "min": 41,
+        "max": 90,
         "runs": 10
       },
       "proofBytes": 7872
     },
     {
       "label": "bb.js WasmWorker (10 threads)",
-      "initMs": 2638,
+      "initMs": 721,
       "witness": {
-        "median": 5,
-        "min": 3,
-        "max": 8,
+        "median": 2,
+        "min": 1,
+        "max": 2,
         "runs": 10
       },
       "prove": {
-        "median": 1858,
-        "min": 1272,
-        "max": 2906,
+        "median": 218,
+        "min": 214,
+        "max": 238,
         "runs": 10
       },
       "verify": {
-        "median": 409,
-        "min": 313,
-        "max": 971,
+        "median": 49,
+        "min": 48,
+        "max": 53,
         "runs": 10
       },
       "proofBytes": 7872
     },
     {
       "label": "bb.js NativeUnixSocket",
-      "initMs": 5,
+      "initMs": 2,
       "witness": {
-        "median": 4,
-        "min": 3,
-        "max": 4,
+        "median": 1,
+        "min": 1,
+        "max": 2,
         "runs": 10
       },
       "prove": {
-        "median": 458,
-        "min": 386,
-        "max": 788,
+        "median": 112,
+        "min": 109,
+        "max": 143,
         "runs": 10
       },
       "verify": {
-        "median": 98,
-        "min": 72,
-        "max": 264,
+        "median": 21,
+        "min": 21,
+        "max": 33,
         "runs": 10
       },
       "proofBytes": 7872
     }
   ],
   "gas": {
-    "verifyTxEstimate": "2447983",
+    "verifyTxEstimate": "2448031",
     "payTx": [
-      "2502883",
-      "2502919",
-      "2502895"
+      "2504302",
+      "2504290",
+      "2504206"
     ],
-    "createMandateTx": "92172",
+    "createMandateTx": "70573",
     "deploy": {
       "transcriptLib": "1331348",
       "verifier": "5180137",
-      "registry": "799588"
+      "registry": "928351"
     }
   }
 }

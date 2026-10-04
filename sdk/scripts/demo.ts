@@ -48,7 +48,10 @@ try {
     notAfter: now + 7n * 86400n,
     payees: Object.values(VENDORS),
   });
-  console.log(c.dim("principal (private):"), `max ${usd(mandate.maxPerTx)}/tx, ${usd(mandate.totalCap)} total, 7 days, ${mandate.payees.length} vendors`);
+  console.log(
+    c.dim("principal (private):"),
+    `max ${usd(mandate.maxPerTx)}/tx, ${usd(mandate.totalCap)} total, 7 days, ${mandate.payees.length} vendors`,
+  );
 
   let state = initialState(mandate);
   const commitment = toHex32(mandate.commitment);
@@ -60,7 +63,10 @@ try {
   await send(s.principal, "approve", [reg.address, 2n ** 256n - 1n], usdc);
   await send(s.principal, "deposit", [50_000_000n]);
   await send(s.principal, "createMandate", [commitment, toHex32(state.head), s.agent.account!.address]);
-  console.log(c.dim("on-chain   (public): "), `mandate ${short(commitment)}  head ${short(toHex32(state.head))}  escrow ${usd(50_000_000n)}`);
+  console.log(
+    c.dim("on-chain   (public): "),
+    `mandate ${short(commitment)}  head ${short(toHex32(state.head))}  escrow ${usd(50_000_000n)}`,
+  );
   console.log(c.dim("                      caps, expiry and vendor list: not on-chain\n"));
 
   const principal = s.principal.account!.address;
@@ -88,7 +94,9 @@ try {
       const bal = (await s.pub.readContract({ ...usdc, functionName: "balanceOf", args: [payee] })) as bigint;
       console.log(
         c.green("PAID"),
-        c.dim(`proof ${p.proof.length}B in ${Math.round(p.timings.proveMs)}ms, verified on-chain, gas ${r.gasUsed.toLocaleString("en-US")}, ${vendor} balance ${usd(bal)}`),
+        c.dim(
+          `proof ${p.proof.length}B in ${Math.round(p.timings.proveMs)}ms, verified on-chain, gas ${r.gasUsed.toLocaleString("en-US")}, ${vendor} balance ${usd(bal)}`,
+        ),
       );
     } catch (e) {
       if (e instanceof MandateViolation) {
@@ -99,18 +107,29 @@ try {
 
   // What can an observer actually learn?
   const id = (await s.pub.readContract({ ...reg, functionName: "mandateId", args: [principal, commitment] })) as Hex;
-  const [, , head] = (await s.pub.readContract({ ...reg, functionName: "mandates", args: [id] })) as [Address, boolean, Hex];
+  const [, , head] = (await s.pub.readContract({ ...reg, functionName: "mandates", args: [id] })) as [
+    Address,
+    boolean,
+    Hex,
+  ];
   const escrow = (await s.pub.readContract({ ...reg, functionName: "escrowOf", args: [principal] })) as bigint;
   console.log(c.bold("\nwhat the chain knows"));
   console.log(`  mandate ${short(commitment)}, head ${short(head)}, principal escrow ${usd(escrow)}`);
-  console.log(`  3 payments: ${["weather-api", "gpu-rental", "search-api"].join(", ")} (payee + amount are public token transfers)`);
+  console.log(
+    `  3 payments: ${["weather-api", "gpu-rental", "search-api"].join(", ")} (payee + amount are public token transfers)`,
+  );
   console.log(c.bold("what it does not know"));
   console.log("  the per-tx cap, the total cap, the expiry, the other vendors on the allowlist, how many there are");
   console.log(c.yellow("\nthe agent followed the rules. nobody had to see the rules.\n"));
 
   // Also try a vendor the principal never approved.
   try {
-    await prover.prove(mandate, state, { amount: 1n, payee: "0x000000000000000000000000000000000000bad0", validUntil, domain });
+    await prover.prove(mandate, state, {
+      amount: 1n,
+      payee: "0x000000000000000000000000000000000000bad0",
+      validUntil,
+      domain,
+    });
   } catch (e) {
     if (e instanceof MandateViolation) console.log(c.dim(`bonus: unknown vendor -> NO PROOF (${e.reason})\n`));
     else throw e;

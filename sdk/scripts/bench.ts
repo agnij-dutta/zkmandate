@@ -4,7 +4,7 @@
 //
 //   cd contracts && forge build && cd ../sdk && npm run bench
 import { writeFileSync } from "node:fs";
-import { encodeFunctionData, type Hex } from "viem";
+import { encodeFunctionData, type Abi, type Hex } from "viem";
 import {
   createMandate,
   initialState,
@@ -35,7 +35,14 @@ const stats = (xs: number[]) => {
   return { median: Math.round(med), min: Math.round(s[0]), max: Math.round(s[s.length - 1]), runs: s.length };
 };
 
-async function benchBackend(label: string, backend: BackendType, m: Mandate, s0: MandateState, pay: Payment, threads?: number) {
+async function benchBackend(
+  label: string,
+  backend: BackendType,
+  m: Mandate,
+  s0: MandateState,
+  pay: Payment,
+  threads?: number,
+) {
   const t0 = performance.now();
   const prover = await ZkMandateProver.create({ backend, threads });
   const initMs = performance.now() - t0;
@@ -54,7 +61,14 @@ async function benchBackend(label: string, backend: BackendType, m: Mandate, s0:
     bytes = p.proof.length;
   }
   await prover.destroy();
-  const r = { label, initMs: Math.round(initMs), witness: stats(witness), prove: stats(prove), verify: stats(verify), proofBytes: bytes };
+  const r = {
+    label,
+    initMs: Math.round(initMs),
+    witness: stats(witness),
+    prove: stats(prove),
+    verify: stats(verify),
+    proofBytes: bytes,
+  };
   console.log(JSON.stringify(r));
   return r;
 }
@@ -63,9 +77,18 @@ const { rpc, proc } = await startAnvil();
 try {
   const chain = await deployStack(rpc);
   const now = (await chain.pub.getBlock()).timestamp;
-  const m = await createMandate({ maxPerTx: 5_000_000n, totalCap: 12_000_000n, notAfter: now + 86400n, payees: PAYEES });
+  const m = await createMandate({
+    maxPerTx: 5_000_000n,
+    totalCap: 12_000_000n,
+    notAfter: now + 86400n,
+    payees: PAYEES,
+  });
   const s0 = initialState(m);
-  const domain: MandateDomain = { chainId: 31337n, registry: chain.registry.address, principal: chain.principal.account!.address };
+  const domain: MandateDomain = {
+    chainId: 31337n,
+    registry: chain.registry.address,
+    principal: chain.principal.account!.address,
+  };
   const context = contextFor(domain, m.commitment);
   const pay: Payment = { amount: 4_000_000n, payee: PAYEES[0], validUntil: now + 3600n, domain };
 
@@ -100,7 +123,9 @@ try {
   results.push(await benchBackend("bb.js Wasm (in-process, no workers)", BackendType.Wasm, m, s0, pay));
   try {
     const threads = (await import("node:os")).availableParallelism();
-    results.push(await benchBackend(`bb.js WasmWorker (${threads} threads)`, BackendType.WasmWorker, m, s0, pay, threads));
+    results.push(
+      await benchBackend(`bb.js WasmWorker (${threads} threads)`, BackendType.WasmWorker, m, s0, pay, threads),
+    );
   } catch (e) {
     console.log(`wasm worker backend unavailable: ${(e as Error).message}`);
   }
@@ -111,7 +136,12 @@ try {
   }
 
   // On-chain gas: fund, create the mandate, then pay three times.
-  const send = async (w: typeof chain.principal, to: { address: Hex; abi: any }, functionName: string, args: unknown[]) => {
+  const send = async (
+    w: typeof chain.principal,
+    to: { address: Hex; abi: Abi },
+    functionName: string,
+    args: unknown[],
+  ) => {
     const hash = await w.writeContract({ ...to, functionName, args, account: w.account!, chain: w.chain });
     return chain.pub.waitForTransactionReceipt({ hash });
   };
@@ -119,7 +149,11 @@ try {
   await send(chain.principal, chain.usdc, "mint", [chain.principal.account!.address, 100_000_000n]);
   await send(chain.principal, chain.usdc, "approve", [reg.address, 2n ** 256n - 1n]);
   await send(chain.principal, reg, "deposit", [50_000_000n]);
-  const create = await send(chain.principal, reg, "createMandate", [toHex32(m.commitment), toHex32(s0.head), chain.agent.account!.address]);
+  const create = await send(chain.principal, reg, "createMandate", [
+    toHex32(m.commitment),
+    toHex32(s0.head),
+    chain.agent.account!.address,
+  ]);
 
   const prover = await ZkMandateProver.create();
   let s = s0;
@@ -130,7 +164,11 @@ try {
     if (i === 0) {
       verifyGas = await chain.pub.estimateGas({
         to: chain.verifier.address,
-        data: encodeFunctionData({ abi: chain.verifier.abi, functionName: "verify", args: [p.proofHex, p.publicInputs] }),
+        data: encodeFunctionData({
+          abi: chain.verifier.abi,
+          functionName: "verify",
+          args: [p.proofHex, p.publicInputs],
+        }),
       });
     }
     const r = await send(chain.agent, reg, "pay", payArgs(p));
@@ -146,7 +184,10 @@ try {
     deploy: Object.fromEntries(Object.entries(chain.deployGas).map(([k, v]) => [k, v.toString()])),
   };
   console.log(JSON.stringify({ gas }));
-  writeFileSync(new URL("../bench-results.json", import.meta.url), JSON.stringify({ when: new Date().toISOString(), runs: RUNS, results, gas }, null, 2) + "\n");
+  writeFileSync(
+    new URL("../bench-results.json", import.meta.url),
+    JSON.stringify({ when: new Date().toISOString(), runs: RUNS, results, gas }, null, 2) + "\n",
+  );
 } finally {
   proc.kill();
 }

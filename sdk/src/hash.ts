@@ -3,8 +3,7 @@
 // same sponge as barretenberg's native Poseidon2 hash (IV = len << 64).
 import { BarretenbergSync, BackendType } from "@aztec/bb.js";
 
-export const FIELD_MODULUS =
-  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+export const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 // Domain tags. Must match circuits/src/main.nr.
 export const TAG = {

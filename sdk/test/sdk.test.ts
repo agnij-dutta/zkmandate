@@ -56,7 +56,12 @@ test("valid payment proves, verifies, and advances the state", async () => {
     payees: [VENDOR_A, VENDOR_B],
   });
   const s0 = initialState(m);
-  const p = await prover.prove(m, s0, { amount: 4_000_000n, payee: VENDOR_A, validUntil: 1_900_000_000n, domain: DOMAIN });
+  const p = await prover.prove(m, s0, {
+    amount: 4_000_000n,
+    payee: VENDOR_A,
+    validUntil: 1_900_000_000n,
+    domain: DOMAIN,
+  });
   assert.equal(p.publicInputs.length, 7);
   // Public input order must match PrivateMandateRegistry.pay.
   assert.equal(BigInt(p.publicInputs[0]), m.commitment);
@@ -80,7 +85,7 @@ test("valid payment proves, verifies, and advances the state", async () => {
 
   // Tampering with a public input breaks verification.
   const forged = { ...p, publicInputs: [...p.publicInputs] };
-  forged.publicInputs[3] = `0x${(40_000_000n).toString(16).padStart(64, "0")}`;
+  forged.publicInputs[3] = `0x${40_000_000n.toString(16).padStart(64, "0")}`;
   assert.equal(await prover.verify(forged).catch(() => false), false);
 });
 
@@ -97,8 +102,10 @@ test("over per-tx cap: no proof", async () => {
 
 test("over cumulative cap: no proof", async () => {
   const s = { ...initialState(m) };
-  const s1 = (await prover.prove(m, s, { amount: 5_000_000n, payee: VENDOR_A, validUntil: 1n, domain: DOMAIN })).newState;
-  const s2 = (await prover.prove(m, s1, { amount: 5_000_000n, payee: VENDOR_B, validUntil: 1n, domain: DOMAIN })).newState;
+  const s1 = (await prover.prove(m, s, { amount: 5_000_000n, payee: VENDOR_A, validUntil: 1n, domain: DOMAIN }))
+    .newState;
+  const s2 = (await prover.prove(m, s1, { amount: 5_000_000n, payee: VENDOR_B, validUntil: 1n, domain: DOMAIN }))
+    .newState;
   await expectViolation(
     () => prover.prove(m, s2, { amount: 2_000_001n, payee: VENDOR_A, validUntil: 1n, domain: DOMAIN }),
     "OVER_CUMULATIVE",
@@ -132,8 +139,14 @@ test("context binds chain, registry and principal", () => {
   const base = contextFor(DOMAIN, m.commitment);
   assert.ok(base < FIELD_MODULUS);
   assert.notEqual(contextFor({ ...DOMAIN, chainId: 1n }, m.commitment), base);
-  assert.notEqual(contextFor({ ...DOMAIN, registry: "0x00000000000000000000000000000000c0dec0df" }, m.commitment), base);
-  assert.notEqual(contextFor({ ...DOMAIN, principal: "0x0000000000000000000000000000000000001eae" }, m.commitment), base);
+  assert.notEqual(
+    contextFor({ ...DOMAIN, registry: "0x00000000000000000000000000000000c0dec0df" }, m.commitment),
+    base,
+  );
+  assert.notEqual(
+    contextFor({ ...DOMAIN, principal: "0x0000000000000000000000000000000000001eae" }, m.commitment),
+    base,
+  );
 });
 
 test("guessable caller-supplied salts are rejected", async () => {

@@ -47,7 +47,12 @@ const plan: [bigint, number][] = [
 ];
 const payments = [];
 for (const [amount, who] of plan) {
-  const p = await prover.prove(m, state, { amount, payee: FIXTURE.payees[who], validUntil: FIXTURE.validUntil, domain });
+  const p = await prover.prove(m, state, {
+    amount,
+    payee: FIXTURE.payees[who],
+    validUntil: FIXTURE.validUntil,
+    domain,
+  });
   if (!(await prover.verify(p))) throw new Error("fixture proof failed to verify");
   payments.push({
     payee: FIXTURE.payees[who],
@@ -60,7 +65,12 @@ for (const [amount, who] of plan) {
 
 // The 4th payment (2 USDC: under the per-tx cap, over the remaining 1 USDC) has no proof.
 try {
-  await prover.prove(m, state, { amount: 2_000_000n, payee: FIXTURE.payees[0], validUntil: FIXTURE.validUntil, domain });
+  await prover.prove(m, state, {
+    amount: 2_000_000n,
+    payee: FIXTURE.payees[0],
+    validUntil: FIXTURE.validUntil,
+    domain,
+  });
   throw new Error("4th payment unexpectedly proved");
 } catch (e) {
   if (!(e instanceof MandateViolation) || e.reason !== "OVER_CUMULATIVE") throw e;
@@ -76,6 +86,9 @@ const out = {
   payments,
 };
 mkdirSync(new URL("../../contracts/test/fixtures/", import.meta.url), { recursive: true });
-writeFileSync(new URL("../../contracts/test/fixtures/payments.json", import.meta.url), JSON.stringify(out, null, 2) + "\n");
+writeFileSync(
+  new URL("../../contracts/test/fixtures/payments.json", import.meta.url),
+  JSON.stringify(out, null, 2) + "\n",
+);
 console.log(`wrote 3 proofs (${payments[0].proof.length / 2 - 1} bytes each) for mandate ${out.mandate}`);
 await prover.destroy();

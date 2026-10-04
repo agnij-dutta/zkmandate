@@ -26,7 +26,8 @@ export class Allowlist {
     for (let d = 0; d < DEPTH; d++) {
       const next: bigint[] = [];
       for (let i = 0; i < level.length; i += 2) {
-        const l = level[i], r = level[i + 1];
+        const l = level[i],
+          r = level[i + 1];
         next.push(nodeHash(l, r));
       }
       this.levels.push(next);

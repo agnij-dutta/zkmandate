@@ -1,0 +1,5 @@
+dist/
+node_modules/
+circuit/
+bench-results.json
+package-lock.json

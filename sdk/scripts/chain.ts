@@ -3,14 +3,7 @@
 // from the Foundry build output (`forge build` in ../contracts first).
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  type Abi,
-  type Address,
-  type Hex,
-} from "viem";
+import { createPublicClient, createWalletClient, http, type Abi, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 
@@ -45,7 +38,9 @@ function link(a: Artifact, libs: Record<string, Address>): Hex {
   return `0x${code}`;
 }
 
-export async function startAnvil(port = 8545 + Math.floor(Math.random() * 1000)): Promise<{ rpc: string; proc: ChildProcess }> {
+export async function startAnvil(
+  port = 8545 + Math.floor(Math.random() * 1000),
+): Promise<{ rpc: string; proc: ChildProcess }> {
   const proc = spawn("anvil", ["--port", String(port), "--silent", "--code-size-limit", "24576"], { stdio: "ignore" });
   const rpc = `http://127.0.0.1:${port}`;
   const client = createPublicClient({ chain: foundry, transport: http(rpc) });
@@ -63,7 +58,11 @@ export async function startAnvil(port = 8545 + Math.floor(Math.random() * 1000))
 
 export async function deployStack(rpc: string) {
   const pub = createPublicClient({ chain: foundry, transport: http(rpc) });
-  const principal = createWalletClient({ account: privateKeyToAccount(KEYS.principal), chain: foundry, transport: http(rpc) });
+  const principal = createWalletClient({
+    account: privateKeyToAccount(KEYS.principal),
+    chain: foundry,
+    transport: http(rpc),
+  });
   const agent = createWalletClient({ account: privateKeyToAccount(KEYS.agent), chain: foundry, transport: http(rpc) });
 
   async function deploy(a: Artifact, bytecode: Hex, args: unknown[] = []) {
