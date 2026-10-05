@@ -1,5 +1,7 @@
 # zkmandate
 
+[![npm](https://img.shields.io/npm/v/zkmandate)](https://www.npmjs.com/package/zkmandate)
+
 **An AI agent proves each payment fits its spending mandate, without revealing the mandate.**
 
 The principal sets a per-tx cap, a cumulative cap, a payee allowlist (up to 256 payees)
@@ -58,6 +60,15 @@ on an Apple M4 · 28 MB peak RAM · about 2.45M gas to verify on-chain. Method, 
 raw output in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Quickstart
+
+To use the prover SDK in your own project, install it from npm (Node 20+, ESM only):
+
+```bash
+npm install zkmandate
+```
+
+It ships the compiled circuit, so proving needs no nargo or bb install. To build the circuit
+and contracts, run the tests and the local demo, work from a clone.
 
 Requirements: `nargo 1.0.0-beta.19` (`noirup -v 1.0.0-beta.19`), `bb 4.0.0-nightly.20260120`
 (`bbup -v 4.0.0-nightly.20260120`), Foundry, Node 22. The nargo and bb versions must match

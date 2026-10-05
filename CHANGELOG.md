@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.1.0] - 2026-10-04
 
+Published to npm on 2026-10-05 as [`zkmandate`](https://www.npmjs.com/package/zkmandate)
+(the `sdk/` package).
+
 ### Added
 
 - Noir circuit proving a payment fits a private mandate: per-tx cap, cumulative cap via a
